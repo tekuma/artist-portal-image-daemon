@@ -29,10 +29,12 @@ listenForData = () => {
 handleData = (snapshot) => {
   let data = snapshot.val();
   console.log("Child was detected!!! ->", data);
-  if (!data.completed) {
+  if (!data.complete) {
       console.log(">>> Job Added!");
       autoTag(data);
         // resize
+  } else {
+      console.log("<completed>");
   }
 
 }
@@ -40,7 +42,7 @@ handleData = (snapshot) => {
 // ======= autoTag code ========
 
 autoTag = (data) => {
-    console.log(">Autotag@");
+    console.log(">Autotag");
     logInToStorage(data)
       .then(retrieveImageFile)
       .then(callClarifai)
@@ -90,19 +92,21 @@ callClarifai = (input) => {
 		      'clientId'    : clientID,
 		      'clientSecret': clientScrt
 		    });
-		    console.log(">Clarifai Connected Successfully");
-		    Clarifai.getTagsByUrl(url, {
-		        // Pass tagging params here :
-		        // 'model': 'travel-v1.0'
-		    }).then( (tagResponse)=>{
+		    console.log(">Clarifai Connected Successfully", url);
+            let timer = 3000; //3000ms
+            setTimeout(()=>{
+                Clarifai.getTagsByUrl(url).then( (tagResponse)=>{
+                console.log(">Recieved Tags");
 		        let tagResult = tagResponse.results[0].result.tag;
 		        let docid     = tagResponse.results[0].docid;
 		        Clarifai.getColorsByUrl(url)
 		        .then( (colorResponse)=>{
+                    console.log(">Recieved Colors");
 		            let colorResult = colorResponse.results[0].colors;
 		            resolve([tagResult, colorResult, docid, data]);
-		        });
-		    });
+		        }, (err)=>{console.log(err);});
+		    },(err)=>{console.log(err);});},
+            timer);
 		});
 }
 
@@ -129,47 +133,40 @@ recordInDatabase = (results) => {
 		    });
 		    dbRef = firebase.database().ref(dataPath)
 		}
-
-		dbRef.once("value").then((snapshot)=>{
-		    console.log(">Firebase DB connected ");
-		    let node   = snapshot.val();
-		    let retlst = [];
-		    node['colors'] = colorResult;
-		    // create a tag object consistent with UX library
-		    for (let i = 0; i < tagResult.probs.length; i++) {
-		        // setting arbitrary cut-offs
-		        if ((tagResult.probs[i] >= tagCutoff && i < 16) || i < 4) {
-		            let tagObj = {
-		                id   : i+1,
-		                text : tagResult.classes[i]
-		            };
-		            retlst.push(tagObj);
-		        }
-		    }
-		    node['tags']   = retlst;
-		    node['doc_id'] = docid; //the clarifai file ID
-		    console.log("Doc ID:", docid);
-		    firebase.database().ref(dataPath).set(node, (err)=>{
-		        console.log(">>Firebase Database set ; err:", err);
-		    });
-		});
+        let tagList = [];
+        // create a tag object consistent with UX library
+        for (let i = 0; i < tagResult.probs.length; i++) {
+            // setting arbitrary cut-offs
+            if ((tagResult.probs[i] >= tagCutoff && i < 16) || i < 4) {
+                let tagObj = {
+                    id   : i+1,
+                    text : tagResult.classes[i]
+                };
+                tagList.push(tagObj);
+            }
+        }
+        let updates = {
+            colors :colorResult,
+            tags   : tagList,
+            doc_id : docid
+        }
+        console.log("> About to update Firebase");
+        firebase.database().ref(dataPath).update(updates,(err)=>{
+            console.log(">>Firebase Database set ; err:", err);
+            markJobComplete(data.job_id);
+        });
 }
 
+markJobComplete = (jobID) => {
+    let jobPath =  `jobs/${jobID}`;
+    firebase.database().ref(jobPath).update({complete:true});
+    console.log("!>>Job:",jobID,"is complete");
+}
 
-// ========== Logic ======================
-//
+// ========== Overall Logic ======================
+
 
 initializeFirebase();
+listenForData();
 
-let testData = { bucket: 'art-uploads',
-  complete: false,
-  file_path: 'portal/cacxZwqfArVzrUXD5tn1t24OlJJ2/uploads/-KR6KYz-2O5WQdLP_SoU',
-  job_id: '-KR6KYz4aTWY6PsLzUms',
-  name: '-KR6KYz-2O5WQdLP_SoU',
-  uid: 'cacxZwqfArVzrUXD5tn1t24OlJJ2'
-}
-autoTag(testData);
-
-
-// listenForData();
 // autoTag({a:"something"});
