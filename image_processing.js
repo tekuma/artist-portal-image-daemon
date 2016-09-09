@@ -44,9 +44,15 @@ handleData = (snapshot) => {
   }
 }
 
+//FIXME empty complete node
 markJobComplete = (jobID) => {
     let jobPath =  `jobs/${jobID}`;
-    firebase.database().ref(jobPath).update({complete:true});
+    let jobRef  = firebase.database().ref(jobPath);
+    let updates = {
+        complete : true,
+        completed: new Date().toISOString()
+    }
+    jobRef.update(updates);
     console.log("!>>Job:",jobID,"is complete");
 }
 
