@@ -44,15 +44,19 @@ handleData = (snapshot) => {
   }
 }
 
-//FIXME empty complete node
-markJobComplete = (jobID) => {
+//FIXME on update, all other information is deleted. Why?
+markJobComplete = (jobID, callback) => {
     let jobPath =  `jobs/${jobID}`;
     let jobRef  = firebase.database().ref(jobPath);
     let updates = {
         complete : true,
         completed: new Date().toISOString()
     }
-    jobRef.update(updates);
+    jobRef.update(updates, ()=>{
+        if (callback !== null) {
+            callback(jobID);
+        }
+    });
     console.log("!>>Job:",jobID,"is complete");
 }
 
@@ -62,7 +66,7 @@ removeJob = (jobID) => {
     console.log("#>>Job:",jobID,"<Deleted>");
 }
 
-submitJob = (path, uid, artworkUID, task, toBeDeleted) => {
+submitJob = (path, uid, artworkUID, task) => {
     let url      = firebase.database().ref('jobs').push();
     let jobID    = url.path.o[1];
     let job = {
@@ -77,10 +81,7 @@ submitJob = (path, uid, artworkUID, task, toBeDeleted) => {
     }
     let jobPath = `jobs/${jobID}`;
     firebase.database().ref(jobPath).set(job, ()=>{
-        console.log();
-        if (toBeDeleted != null) {
-            removeJob(toBeDeleted);
-        }
+        console.log(">>Job",jobID,"<submitted>");
     });
 }
 
@@ -169,7 +170,7 @@ recordInDatabase = (results) => {
 
 		console.log('=============================');
 		console.log(">>User:", data.uid, "Artwork:", data.name, "Path:",dataPath );
-		console.log(">>Retrieved all info from Clarifai. Tags:", tagResult, "Color:", colorResult);
+		// console.log(">>Retrieved all info from Clarifai. Tags:", tagResult, "Color:", colorResult);S
 
 		let dbRef;
 		try {
@@ -194,15 +195,14 @@ recordInDatabase = (results) => {
             }
         }
         let updates = {
-            colors :colorResult,
+            colors : colorResult,
             tags   : tagList,
             doc_id : docid
         }
         console.log("> About to update Firebase");
         firebase.database().ref(dataPath).update(updates,(err)=>{
             console.log(">>Firebase Database set ; err:", err);
-            markJobComplete(data.job_id);
-            removeJob(data.job_id);
+            markJobComplete(data.job_id, removeJob);
         });
 }
 
@@ -234,8 +234,8 @@ resizeAndUploadThumbnail = (image, width, quality, data, bucket) => {
         thumb.save(tbuffer, options, (err)=>{
             if (!err) {
                 console.log(">>Thumbnail 512xAUTO success");
-                markJobComplete(data.job_id);
-                submitJob(dest, data.uid, data.name, "autotag", data.job_id);
+                markJobComplete(data.job_id, removeJob);
+                submitJob(dest, data.uid, data.name, "autotag");
             } else {
                 console.log(err);
             }
