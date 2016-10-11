@@ -1,23 +1,37 @@
 const firebase = require('firebase');
 const jimp     = require('jimp');
 const gcloud   = require('gcloud');
+//const gcloud   = require('google-cloud');
 const Clarifai = require('clarifai');
 
+
 // ==== Global Variables ========
-const tagCutoff = .85;
-const small     = 128;
-const large     = 512;
-const quality   = 90;
+const production = true;
+const tagCutoff  = .85;
+const small      = 128;
+const large      = 512;
+const quality    = 90;
 
 // =========== Methods ================
 
 
 initializeFirebase = () => {
+    let databaseURL;
+    let key;
+    if (production) {
+        databaseURL = "https://artist-tekuma-4a697.firebaseio.com";
+        key = "auth/googleServiceKey.json";
+    } else {
+        databaseURL = "https://project-7614141605200030275.firebaseio.com";
+        key = "auth/devKey.json";
+    }
+    console.log(databaseURL);
   firebase.initializeApp({
-    databaseURL   : "https://artist-tekuma-4a697.firebaseio.com",
-    serviceAccount: "auth/googleServiceKey.json"
+    databaseURL   : databaseURL,
+    serviceAccount: key
   });
 }
+
 
 listenForData = () => {
   let path = 'jobs';
@@ -27,6 +41,7 @@ listenForData = () => {
 
 handleData = (snapshot) => {
   let data = snapshot.val();
+  console.log(data);
   console.log("Job was detected!!! ->", data.job_id);
   if (!data.complete) {
       if (data.task === "autotag") {
@@ -62,8 +77,10 @@ markJobComplete = (jobID, callback) => {
 
 removeJob = (jobID) => {
     let jobPath   =  `jobs/${jobID}`;
-    firebase.database().ref(jobPath).set(null);
-    console.log("#>>Job:",jobID,"<Deleted>");
+    firebase.database().ref(jobPath).set(null, ()=>{
+        console.log("#>>Job:",jobID,"<Deleted>");
+    });
+
 }
 
 submitJob = (path, uid, artworkUID, task) => {
@@ -97,9 +114,18 @@ autoTag = (data) => {
 
 logInToStorage = (data) => {
     return new Promise( function(resolve,reject){
+        let projId;
+        let key;
+        if (production) {
+            projId = 'artist-tekuma-4a697';
+            key = "auth/googleServiceKey.json";
+        } else {
+            projId = 'project-7614141605200030275';
+            key = "auth/devKey.json";
+        }
         let gcs = gcloud.storage({
-            keyFilename: './auth/googleServiceKey.json',
-            projectId  : 'artist-tekuma-4a697'
+            keyFilename: key,
+            projectId  : projId
         });
         console.log(">storage connected");
         resolve([gcs,data]);
@@ -111,7 +137,7 @@ retrieveImageFile = (input) => {
     let data = input[1];
 	return new Promise(function(resolve,reject){
 		console.log(">>> Retrieveing image");
-	    let lifespan = 90000; // timespan of image URL to be not password protected. 90 seconds.
+	    let lifespan = 60000; // timespan of image URL to be not password protected. 90 seconds.
 	    let expires  = new Date().getTime() + lifespan;
         let thisFile = gcs.bucket(data.bucket).file(data.file_path);
 
@@ -166,7 +192,13 @@ recordInDatabase = (results) => {
         let data        = results[3];
 		console.log(">>Connecting to firebase");
 
-		let dataPath = `/public/onboarders/${data.uid}/artworks/${data.name}`;
+        let dataPath;
+        if (production) {
+            dataPath = `public/onboarders/${data.uid}/artworks/${data.name}`;
+        } else {
+            dataPath = `/onboarders/${data.uid}/artworks/${data.name}`;
+        }
+
 
 		console.log('=============================');
 		console.log(">>User:", data.uid, "Artwork:", data.name, "Path:",dataPath );
@@ -176,11 +208,8 @@ recordInDatabase = (results) => {
 		try {
 		    dbRef = firebase.database().ref(dataPath); //root refrence
 		} catch (e) {
-		    firebase.initializeApp({
-		      databaseURL   : "https://artist-tekuma-4a697.firebaseio.com",
-		      serviceAccount: "./auth/googleServiceKey.json"
-		    });
-		    dbRef = firebase.database().ref(dataPath)
+		    initializeFirebase();
+		    dbRef = firebase.database().ref(dataPath);
 		}
         let tagList = [];
         // create a tag object consistent with UX library
@@ -211,7 +240,8 @@ recordInDatabase = (results) => {
 // ======= Resize Code ===============
 
 resize = (data) => {
-    let timespan = 5000;//ms
+    let timespan = 2500;//ms
+    //wait for the uploaded file to be completely stored in the bucket
     setTimeout(()=>{
         getFileThenResize(small, large, quality, data);
     }, timespan);
@@ -244,26 +274,32 @@ resizeAndUploadThumbnail = (image, width, quality, data, bucket) => {
 }
 
 getFileThenResize = (small, large, quality, data) => {
-    let gcs = gcloud.storage({
-        keyFilename: './auth/googleServiceKey.json',
-        projectId  : 'artist-tekuma-4a697'
-    });
-    let bucket  = gcs.bucket(data.bucket);
-    console.log(data.file_path);
-    let originalUpload  = bucket.file(data.file_path);
-    originalUpload.download((err,buffer)=>{
-        console.log(">Download Success", buffer);
-        jimp.read(buffer).then((image)=>{
-            console.log(">processing image");
+    logInToStorage(data).then((args)=>{
+        let gcs = args[0];
+        let bucket  = gcs.bucket(data.bucket);
+        console.log(data.file_path);
+        let originalUpload  = bucket.file(data.file_path);
+        originalUpload.download((err,buffer)=>{
+            if (buffer) {
+                console.log(">Download Success", buffer);
+                jimp.read(buffer).then((image)=>{
+                    console.log(">processing image");
 
-            resizeAndUploadThumbnail(image.clone(), small, quality, data, bucket);
-            resizeAndUploadThumbnail(image, large, quality, data, bucket);
+                    resizeAndUploadThumbnail(image.clone(), small, quality, data, bucket);
+                    resizeAndUploadThumbnail(image, large, quality, data, bucket);
 
-        }).catch((err)=>{
-            console.log(err);
+                }).catch((err)=>{
+                    console.log(err);
+                });
+            } else {
+                console.log("buffer =>",buffer,err);
+            }
+
         });
     });
 }
+
+
 
 
 // ========== Overall Logic ======================
