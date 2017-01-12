@@ -1,18 +1,20 @@
 {
-  "name": "server",
+  "name": "image-daemon",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "image_daemon.js",
   "scripts": {
+    "start": "node image_daemon.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "author": "Stephen White",
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
     "clarifai": "^1.2.1",
     "firebase": "^3.3.1",
-    "gcloud": "^0.37.0",
+    "firebase-admin": "^4.0.4",
+    "google-cloud": "^0.45.2",
     "jimp": "^0.2.27"
   }
 }

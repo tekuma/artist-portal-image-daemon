@@ -13,6 +13,7 @@
 -KYAOSwR5VFOM1d7oj-2: {
     bucket   : "art-uploads", // the GC bucket fullsize image is in
     complete : true, // if the job has been Successfully completed.
+    completed: "2016-12-04T19:53:20.947Z" // When job was marked complete.
     file_path: "portal/vqy3UGVZQzN7GjHQeeFBKhe7wY72/uploads/-KYAOSm2qS6-EuwXOgME",
                 // the path to the image, inside of the bucket.
     job_id   : "-KYAOSwR5VFOM1d7oj-2",  // UID for this job
@@ -23,6 +24,18 @@
 }
  */
 
+ //FIXME: Change to:
+     //  let job = {
+     // artist_uid  : firebase.auth().currentUser.uid,
+     // file_path   : path,
+     // task        : "resize",
+     // job_id      : jobID,
+     // isComplete  : false,
+     // bucket      : "art-uploads",
+     // artwork_uid : artworkUID,
+     // submitted   : new Date().toISOString()
+     //     }
+
 // ==== Order of Events ======
 // - at arist.tekuma.io a file is uploaded into art bucket
 // - on complete, a job is created, with *task: resize*
@@ -31,14 +44,14 @@
 //
 
 
-const firebase = require('firebase');
+const firebase = require('firebase-admin');
 const jimp     = require('jimp');
-const gcloud   = require('gcloud');
+const gcloud   = require('google-cloud');
 const Clarifai = require('clarifai');
+const serviceKey = require('./auth/googleServiceKey.json');
 
 
 // ==== Global Variables ========
-const production = true; // whether to watch artist-tekuma or dev-artist-tekuma
 const tagCutoff  = .85; // (0-1) Cutoff for the 'certainty' of tags returned
 const small      = 128; // width of 'small' thumbnail generated
 const large      = 512; // width of 'large' thumbnail generated
@@ -50,26 +63,19 @@ const lifespan   = 60000; // timespan of image URL, from retrieveImageFile,
 
 // =========== Methods ================
 
+//FIXME At times, this script can be overloaded. Add in timeouts, or some
+// means of only allowing a handful of callbacks to fire at once.
+
 /**
  * Initializes connection to the Firebase DB, a
- * hierarchical DB, rooted at the databaseURL. Connected to the
- * production or dev DB depending on the 'production' global var
+ * hierarchical DB, rooted at the databaseURL.
  */
 initializeFirebase = () => {
-    let databaseURL;
-    let key;
-    if (production) {
-        databaseURL = "https://artist-tekuma-4a697.firebaseio.com";
-        key = "auth/googleServiceKey.json";
-    } else {
-        databaseURL = "https://project-7614141605200030275.firebaseio.com";
-        key = "auth/devKey.json";
-    }
-    console.log(databaseURL);
-  firebase.initializeApp({
-    databaseURL   : databaseURL,
-    serviceAccount: key
-  });
+    let databaseURL= "https://artist-tekuma-4a697.firebaseio.com";
+    firebase.initializeApp({
+        databaseURL : databaseURL,
+        credential  : firebase.credential.cert(serviceKey)
+    });
 }
 
 /**
@@ -77,10 +83,12 @@ initializeFirebase = () => {
  * to the node will trigger the handleData callback.
  */
 listenForData = () => {
-  let path = 'jobs';
-  console.log(">>> Firebase Conneced. Listening for jobs...");
-  firebase.database().ref(path).on('child_added', handleData);
+    let path = 'jobs/';
+    console.log(">>> Firebase Conneced. Listening for jobs...");
+    firebase.database().ref(path).on('child_added', handleData);
 }
+
+
 
 /**
  * Extracts the job it as passed, checks if it is already complete
@@ -88,21 +96,21 @@ listenForData = () => {
  * @param  {Snapshot} snapshot Firebase Snapshot object
  */
 handleData = (snapshot) => {
-  let data = snapshot.val();
-  console.log("Job was detected!!! ->", data.job_id);
-  if (!data.complete) {
-      if (data.task === "autotag") {
-          console.log(data.name," >>> Job Initiated in autotag!");
-          autoTag(data);
-      } else if (data.task === "resize"){
-          console.log(data.name," >>> Job Initiated in resize!");
-          resize(data);
+    let data = snapshot.val();
+    console.log("Job:", data.job_id, "deteched by artist:", data.uid);
+    if (!data.complete) {
+        if (data.task === "autotag") {
+            console.log(data.name," >>> Job Initiated in autotag!");
+            autoTag(data);
+        } else if (data.task === "resize"){
+            console.log(data.name," >>> Job Initiated in resize!");
+            resize(data);
       } else {
-          console.log(" :( unrecognized task ");
+            console.log(" :( unrecognized task ",data.task);
       }
   } else {
-      console.log(data.job_id, "<completed>");
-      removeJob(data.job_id); //FIXME remove completed jobs.
+      console.log(data.job_id, "<complete>");
+      removeJob(data.job_id);
   }
 }
 
@@ -111,35 +119,25 @@ handleData = (snapshot) => {
  * @param  {String}   jobID    [description]
  * @param  {Function} callback
  */
-markJobComplete = (jobID, callback) => {
-    let jobPath =  `jobs/${jobID}`;
+markJobComplete = (jobID,remove) => {
+    let jobPath = `jobs/${jobID}`;
     let jobRef  = firebase.database().ref(jobPath);
-    let updates = {
-        complete : true,
-        completed:
-    }
-    jobRef.transaction((data)=>{
-        data.completed    = true;
-        data["completed"] =  new Date().toISOString();
-        return data;
-    },(err,wasSuccessful,snapshot)=>{ // after-call
-        if (callback !== null) {
-            callback(jobID);
+    jobRef.update({complete:true}).then( ()=>{
+        console.log("!>>Job:",jobID,"is marked complete");
+        if (remove) {
+            removeJob(jobID);
         }
     });
-
-    console.log("!>>Job:",jobID,"is marked complete");
 }
 
 /**
  * Deletes jobID from Firebase DB
  */
 removeJob = (jobID) => {
-    let jobPath   =  `jobs/${jobID}`;
-    firebase.database().ref(jobPath).set(null, ()=>{
-        console.log("#>>Job:",jobID,"<Deleted>");
+    let jobPath = `jobs/${jobID}`;
+    firebase.database().ref(jobPath).remove().then(()=>{
+        console.log("|>> Job:",jobID, "<Deleted>");
     });
-
 }
 
 /**
@@ -149,17 +147,19 @@ submitJob = (path, uid, artworkUID, task) => {
     let url      = firebase.database().ref('jobs').push();
     let jobID    = url.path.o[1];
     let job = {
-        task     : task, //
-        uid      : uid, //
-        file_path: path, //
+        task     : task,  //
+        uid      : uid,   //
+        file_path: path,  //
         job_id   : jobID,
         complete : false,
         bucket   : "art-uploads",
         name     : artworkUID, //
-        submitted: new Date().toISOString()
+        submitted: new Date().toISOString(),
     }
     let jobPath = `jobs/${jobID}`;
-    firebase.database().ref(jobPath).set(job, ()=>{
+    let jobRef  = firebase.database().ref(jobPath);
+    console.log(jobRef.toString());
+    jobRef.set(job, ()=>{
         console.log(">>Job",jobID,"<submitted>");
     });
 }
@@ -169,24 +169,18 @@ submitJob = (path, uid, artworkUID, task) => {
 autoTag = (data) => {
     console.log(">Autotag");
     logInToStorage(data)
-      .then(retrieveImageFile)
-      .then(callClarifai)
-      .then(recordInDatabase);
+        .then(retrieveImageFile)
+        .then(callClarifai)
+        .then(recordInDatabase);
 }
 
 logInToStorage = (data) => {
     return new Promise( (resolve,reject)=>{
-        let projId;
-        let key;
-        if (production) {
-            projId = 'artist-tekuma-4a697';
-            key = "auth/googleServiceKey.json";
-        } else {
-            projId = 'project-7614141605200030275';
-            key = "auth/devKey.json";
-        }
+        let projId = 'artist-tekuma-4a697';
+        let key = "auth/googleServiceKey.json";
         let gcs = gcloud.storage({
-            keyFilename: key,
+            credentials: serviceKey,
+            // keyFilename: key,
             projectId  : projId
         });
         console.log(">storage connected");
@@ -204,7 +198,7 @@ retrieveImageFile = (input) => {
     let gcs  = input[0];
     let data = input[1];
 	return new Promise( (resolve,reject)=>{
-		console.log(">>> Retrieveing image");
+		console.log(">Retrieveing image:",data.file_path);
 	    let expires  = new Date().getTime() + lifespan; // global var
         let thisFile = gcs.bucket(data.bucket).file(data.file_path);
 
@@ -213,7 +207,7 @@ retrieveImageFile = (input) => {
 	        expires: expires,
 	    };
 		thisFile.getSignedUrl(params, (err,url)=>{
-            console.log("err", err);
+            console.log("Signing Error:", err);
 		    resolve([url,data]);
 		});
 	});
@@ -226,7 +220,7 @@ retrieveImageFile = (input) => {
 callClarifai = (input) => {
     let url  = input[0];
     let data = input[1];
-	console.log(">calling clarifai");
+
 	return new Promise( (resolve, reject)=>{
 	    //NOTE url is an auth'd url for {lifespan} ms
 	    let clientID    = "M6m0sUVsWLHROSW0IjlrG2cojnJE8AaHJ1uBaJjZ";
@@ -235,9 +229,9 @@ callClarifai = (input) => {
 	      'clientId'    : clientID,
 	      'clientSecret': clientScrt
 	    });
-	    console.log(">Clarifai Connected Successfully", url);
+	    console.log(">Clarifai Connected Successfully");
         let timer = 3000; // 3 sec
-        setTimeout(()=>{ // let URL signing propagate
+        setTimeout( ()=>{ // let URL signing propagate
             Clarifai.getTagsByUrl(url).then( (tagResponse)=>{
             console.log(">Recieved Tags");
 	        let tagResult = tagResponse.results[0].result.tag;
@@ -265,15 +259,9 @@ recordInDatabase = (results) => {
 		let docid       = results[2];
         let data        = results[3];
 		console.log(">> Connecting to firebase DB ");
-        let dataPath;
-        if (production) {
-            dataPath = `public/onboarders/${data.uid}/artworks/${data.name}`;
-        } else {
-            dataPath = `/onboarders/${data.uid}/artworks/${data.name}`;
-        }
+        dataPath = `public/onboarders/${data.uid}/artworks/${data.name}`;
 		console.log('=============================');
 		console.log(">>User:", data.uid, "Artwork:", data.name, "Path:",dataPath );
-		// console.log(">>Retrieved all info from Clarifai. Tags:", tagResult, "Color:", colorResult);S
 		let dbRef;
 		try { // may or maynot need to re-initialize connection to FB
 		    dbRef = firebase.database().ref(dataPath); //root refrence
@@ -304,7 +292,7 @@ recordInDatabase = (results) => {
         //TODO: consider using .transaction instead of .update
         firebase.database().ref(dataPath).update(updates,(err)=>{
             console.log(">>Firebase Database set ; err:", err);
-            markJobComplete(data.job_id, removeJob);
+            markJobComplete(data.job_id, true);
         });
 }
 
@@ -335,10 +323,22 @@ getFileThenResize = (small, large, quality, data) => {
             if (buffer) {
                 console.log(">Download Success", buffer);
                 jimp.read(buffer).then((image)=>{
-                    console.log(">Generating thumbnails...");
+                    console.log(">Begining to generate thumbnails...");
+                    let clone = image.clone();
 
-                    resizeAndUploadThumbnail(image.clone(), small, quality, data, bucket);
-                    resizeAndUploadThumbnail(image, large, quality, data, bucket);
+                    resizeAndUploadThumbnail(clone, small, quality, data, bucket)
+                    .then((success1)=>{
+                        if (success1) {
+                            resizeAndUploadThumbnail(image, large, quality, data, bucket)
+                            .then((success2)=>{
+                                if (success2) {
+                                    console.log(">>> Resizing finished successfully");
+                                    markJobComplete(data.job_id, true);
+                                    submitJob(dest, data.uid, data.name, "autotag");
+                                }
+                            });
+                        }
+                    });
 
                 }).catch((err)=>{
                     console.log(err);
@@ -346,7 +346,6 @@ getFileThenResize = (small, large, quality, data) => {
             } else {
                 console.log("buffer =>",buffer,err);
             }
-
         });
     });
 }
@@ -358,30 +357,33 @@ getFileThenResize = (small, large, quality, data) => {
  *
  */
 resizeAndUploadThumbnail = (image, width, quality, data, bucket) => {
-    console.log(">processing image:", width);
-    //NOTE: jimp.AUTO will dynamically retain the origin aspect ratio
-    image.resize(width,jimp.AUTO).quality(quality).getBuffer(jimp.MIME_PNG, (err, tbuffer)=>{
-        if(err){console.log(err);}
-        let dest    = `portal/${data.uid}/thumb${width}/${data.name}`;
-        let thumb   = bucket.file(dest);
-        let options = {
-            metadata:{
-                contentType: 'image/png'
-            },
-            // make the thumbnail publicly readable
-            predefinedAcl:"publicRead"
-        };
+    return new Promise((resolve, reject)=>{
+        console.log(">processing image:", width);
+        //NOTE: jimp.AUTO will dynamically retain the origin aspect ratio
+        image.resize(width,jimp.AUTO).quality(quality).getBuffer(jimp.MIME_PNG, (err, tbuffer)=>{
+            if(err){console.log("resize error:",err);}
+            let dest    = `portal/${data.uid}/thumb${width}/${data.name}`;
+            let thumb   = bucket.file(dest);
+            let options = {
+                metadata:{
+                    contentType: 'image/png'
+                },
+                // make the thumbnail publicly readable
+                predefinedAcl:"publicRead"
+            };
 
-        thumb.save(tbuffer, options, (err)=>{
-            if (!err) {
-                console.log(`>>Thumbnail ${width}xAUTO success`);
-                markJobComplete(data.job_id, removeJob);
-                submitJob(dest, data.uid, data.name, "autotag");
-            } else {
-                console.log(err);
-            }
+            thumb.save(tbuffer, options, (err)=>{
+                if (!err) {
+                    console.log(`>>Thumbnail ${width}xAUTO success`);
+                    resolve(true);
+                } else {
+                    console.log("Error saving thumbnail",err);
+                    resolve(false);
+                }
+            });
         });
     });
+
 }
 
 
