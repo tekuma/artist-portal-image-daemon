@@ -333,6 +333,7 @@ getFileThenResize = (small, large, quality, data) => {
                             .then((success2)=>{
                                 if (success2) {
                                     console.log(">>> Resizing finished successfully");
+                                    let dest    = `portal/${data.uid}/thumb512/${data.name}`;
                                     markJobComplete(data.job_id, true);
                                     submitJob(dest, data.uid, data.name, "autotag");
                                 }
