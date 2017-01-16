@@ -43,12 +43,14 @@
 // - 2 thumbnails saved to gcloud
 //
 
-
+//Libs
 const firebase = require('firebase-admin');
 const jimp     = require('jimp');
 const gcloud   = require('google-cloud');
 const Clarifai = require('clarifai');
-const serviceKey = require('./auth/googleServiceKey.json');
+//Keys
+const serviceKey = require('./auth/artistKey.json');
+const curatorKey = require('./auth/curatorKey.json');
 
 
 // ==== Global Variables ========
@@ -66,17 +68,17 @@ const lifespan   = 60000; // timespan of image URL, from retrieveImageFile,
 //FIXME At times, this script can be overloaded. Add in timeouts, or some
 // means of only allowing a handful of callbacks to fire at once.
 
-/**
- * Initializes connection to the Firebase DB, a
- * hierarchical DB, rooted at the databaseURL.
- */
-initializeFirebase = () => {
-    let databaseURL= "https://artist-tekuma-4a697.firebaseio.com";
-    firebase.initializeApp({
-        databaseURL : databaseURL,
-        credential  : firebase.credential.cert(serviceKey)
-    });
-}
+firebase.initializeApp({
+    databaseURL : "https://artist-tekuma-4a697.firebaseio.com",
+    credential  : firebase.credential.cert(serviceKey)
+});
+
+var curator  = firebase.initializeApp({
+    databaseURL : "https://curator-tekuma.firebaseio.com/",
+    credential  : firebase.credential.cert(curatorKey)
+}, "curator");
+
+
 
 /**
  * Establishes a listen on the /jobs branch of the DB. Any children added
@@ -87,7 +89,6 @@ listenForData = () => {
     console.log(">>> Firebase Conneced. Listening for jobs...");
     firebase.database().ref(path).on('child_added', handleData);
 }
-
 
 
 /**
@@ -105,6 +106,9 @@ handleData = (snapshot) => {
         } else if (data.task === "resize"){
             console.log(data.name," >>> Job Initiated in resize!");
             resize(data);
+      } else if (data.task === "submit") {
+            console.log(data.name, ">> Job initiated in submit");
+            submit(data);
       } else {
             console.log(" :( unrecognized task ",data.task);
       }
@@ -112,6 +116,12 @@ handleData = (snapshot) => {
       console.log(data.job_id, "<complete>");
       removeJob(data.job_id);
   }
+}
+
+submit = (data) => {
+    curator.database().ref(`submissions/${data.artwork_uid}`).set(data.submission).then(()=>{
+        console.log(">> Submission added to list.");
+    });
 }
 
 /**
@@ -391,5 +401,5 @@ resizeAndUploadThumbnail = (image, width, quality, data, bucket) => {
 
 // ========== Overall Logic ======================
 
-initializeFirebase();
+// initializeFirebase();
 listenForData();
