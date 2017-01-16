@@ -121,7 +121,9 @@ handleData = (snapshot) => {
 submit = (data) => {
     curator.database().ref(`submissions/${data.artwork_uid}`).set(data.submission).then(()=>{
         console.log(">> Submission added to list.");
+        markJobComplete(data.job_id,true);
     });
+
 }
 
 /**
