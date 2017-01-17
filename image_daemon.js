@@ -357,9 +357,7 @@ getFileThenResize = (small, large, quality, data) => {
                     console.log(err);
                 });
             } else {
-                console.log("buffer =>",buffer,err);
-            } else {
-                console.log("Buffer too large:", buffer.length);
+                console.log("Buffer Download Error=>",buffer.length, "|", err);
             }
         });
     });
