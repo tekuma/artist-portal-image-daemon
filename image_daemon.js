@@ -1,4 +1,4 @@
-// JS ES6+
+    // JS ES6+
 // Copyright 2016 Tekuma Inc.
 // All rights reserved.
 // created by Stephen L. White
@@ -332,7 +332,7 @@ getFileThenResize = (small, large, quality, data) => {
         console.log(data.file_path);
         let originalUpload  = bucket.file(data.file_path);
         originalUpload.download((err,buffer)=>{
-            if (buffer) {
+            if (buffer.length < 21000000) { // < 21 Mb
                 console.log(">Download Success", buffer);
                 jimp.read(buffer).then((image)=>{
                     console.log(">Begining to generate thumbnails...");
@@ -358,6 +358,8 @@ getFileThenResize = (small, large, quality, data) => {
                 });
             } else {
                 console.log("buffer =>",buffer,err);
+            } else {
+                console.log("Buffer too large:", buffer.length);
             }
         });
     });
