@@ -332,6 +332,7 @@ getFileThenResize = (small, large, quality, data) => {
         console.log(data.file_path);
         let originalUpload  = bucket.file(data.file_path);
         originalUpload.download((err,buffer)=>{
+	    if (buffer) {
             if (buffer.length < 21000000) { // < 21 Mb
                 console.log(">Download Success", buffer);
                 jimp.read(buffer).then((image)=>{
@@ -356,9 +357,11 @@ getFileThenResize = (small, large, quality, data) => {
                 }).catch((err)=>{
                     console.log(err);
                 });
-            } else {
+            
+	    } else {
                 console.log("Buffer Download Error=>",buffer.length, "|", err);
             }
+	    }
         });
     });
 }
