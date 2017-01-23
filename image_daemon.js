@@ -313,7 +313,7 @@ getFileThenResize = (small, large, quality, data) => {
         originalUpload.download((err,buffer)=>{
 	    if (buffer) {
             if (buffer.length < 21000000) { // < 21 Mb
-                console.log(">Download Success", buffer);
+                console.log(">Download Success |", buffer.length, "bytes |",buffer);
                 jimp.read(buffer).then((image)=>{
                     console.log(">Begining to generate thumbnails...");
                     let clone = image.clone();
