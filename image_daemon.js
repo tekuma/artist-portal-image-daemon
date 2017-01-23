@@ -62,23 +62,19 @@ const lifespan   = 60000; // timespan of image URL, from retrieveImageFile,
                           // to be not password protected. 60 seconds.
 
 
-
-// =========== Methods ================
-
-//FIXME At times, this script can be overloaded. Add in timeouts, or some
-// means of only allowing a handful of callbacks to fire at once.
-
+// DEFAULT App : artist-tekuma-4a697 connection
 firebase.initializeApp({
     databaseURL : "https://artist-tekuma-4a697.firebaseio.com",
     credential  : firebase.credential.cert(serviceKey)
 });
-
+// SECONDARY App : curator-tekuma connection
 var curator  = firebase.initializeApp({
     databaseURL : "https://curator-tekuma.firebaseio.com/",
     credential  : firebase.credential.cert(curatorKey)
 }, "curator");
 
-
+var queue = [];
+var limit = 2;
 
 /**
  * Establishes a listen on the /jobs branch of the DB. Any children added
@@ -90,15 +86,28 @@ listenForData = () => {
     firebase.database().ref(path).on('child_added', handleData);
 }
 
-
 /**
- * Extracts the job it as passed, checks if it is already complete
- * (if it is, remove the job from the stack) and initiates the task of the job
- * @param  {Snapshot} snapshot Firebase Snapshot object
+ * Main handler. Checks job queue every 5 seconds. Only allows
+ * 2 jobs to run concurrently. This is an implementation of a
+ * "leaky bucket" approach to prevent overloading the script. 
  */
-handleData = (snapshot) => {
-    let data = snapshot.val();
-    console.log("Job:", data.job_id, "deteched by artist:", data.uid);
+handleActiveJobs = () =>{
+    // console.log("1-1-1-1-1-1-1-1");
+    // console.log(queue.length);
+    // console.log("Limit",limit);
+    while (limit > 0 && queue.length > 0) {
+        limit--;
+        let job = queue.pop();
+        handlePop(job);
+    }
+    setTimeout( ()=>{
+        handleActiveJobs();
+    }, 5000);
+}
+
+
+handlePop = (data) => {
+    console.log("Job:", data.job_id, "initiated");
     if (!data.complete) {
         if (data.task === "autotag") {
             console.log(data.name," >>> Job Initiated in autotag!");
@@ -118,9 +127,28 @@ handleData = (snapshot) => {
   }
 }
 
+/**
+ * Extracts the job it as passed, checks if it is already complete
+ * (if it is, remove the job from the stack) and initiates the task of the job
+ * @param  {Snapshot} snapshot Firebase Snapshot object
+ */
+handleData = (snapshot) => {
+    let data = snapshot.val();
+    console.log("Job:", data.job_id, "deteched by artist:", data.uid);
+    if (!data.complete) {
+        console.log(data.name," >>> Added to queue");
+        queue.push(data);
+
+    } else {
+      console.log(data.job_id, "<complete>");
+      removeJob(data.job_id);
+  }
+}
+
 submit = (data) => {
     curator.database().ref(`submissions/${data.artwork_uid}`).set(data.submission).then(()=>{
         console.log(">> Submission added to list.");
+        limit++; // End point of submit job
         markJobComplete(data.job_id,true);
     });
 
@@ -192,7 +220,6 @@ logInToStorage = (data) => {
         let key = "auth/googleServiceKey.json";
         let gcs = gcloud.storage({
             credentials: serviceKey,
-            // keyFilename: key,
             projectId  : projId
         });
         console.log(">storage connected");
@@ -304,6 +331,7 @@ recordInDatabase = (results) => {
         //TODO: consider using .transaction instead of .update
         firebase.database().ref(dataPath).update(updates,(err)=>{
             console.log(">>Firebase Database set ; err:", err);
+            limit++; // ENDPOINT of autotag job
             markJobComplete(data.job_id, true);
         });
 }
@@ -346,6 +374,7 @@ getFileThenResize = (small, large, quality, data) => {
                                 if (success2) {
                                     console.log(">>> Resizing finished successfully");
                                     let dest    = `portal/${data.uid}/thumb512/${data.name}`;
+                                    limit++; //ENDPOINT of resize job
                                     markJobComplete(data.job_id, true);
                                     submitJob(dest, data.uid, data.name, "autotag");
                                 }
@@ -403,5 +432,5 @@ resizeAndUploadThumbnail = (image, width, quality, data, bucket) => {
 
 // ========== Overall Logic ======================
 
-// initializeFirebase();
+handleActiveJobs();
 listenForData();
