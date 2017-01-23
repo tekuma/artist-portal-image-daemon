@@ -1,11 +1,9 @@
-    // JS ES6+
+// JS ES6+
 // Copyright 2016 Tekuma Inc.
 // All rights reserved.
 // created by Stephen L. White
 //
-//  Image resizing daemon depending on the Jimp library.
-//  Jimp was originally chosen due to its ability to run in any
-//  NodeJS container/engine, and for having zero dependencies.
+//  See README.md for more.
 
 // We use 'jobs' to list tasks to be handled server-side.
 // Below is an example _Job_ object.
@@ -24,25 +22,6 @@
 }
  */
 
- //FIXME: Change to:
-     //  let job = {
-     // artist_uid  : firebase.auth().currentUser.uid,
-     // file_path   : path,
-     // task        : "resize",
-     // job_id      : jobID,
-     // isComplete  : false,
-     // bucket      : "art-uploads",
-     // artwork_uid : artworkUID,
-     // submitted   : new Date().toISOString()
-     //     }
-
-// ==== Order of Events ======
-// - at arist.tekuma.io a file is uploaded into art bucket
-// - on complete, a job is created, with *task: resize*
-// - Job read by daemon, resizing occurs
-// - 2 thumbnails saved to gcloud
-//
-
 //Libs
 const firebase = require('firebase-admin');
 const jimp     = require('jimp');
@@ -58,9 +37,6 @@ const tagCutoff  = .85; // (0-1) Cutoff for the 'certainty' of tags returned
 const small      = 128; // width of 'small' thumbnail generated
 const large      = 512; // width of 'large' thumbnail generated
 const quality    = 90;  // jpg quality param requested by Jimp
-const lifespan   = 60000; // timespan of image URL, from retrieveImageFile,
-                          // to be not password protected. 60 seconds.
-
 
 // DEFAULT App : artist-tekuma-4a697 connection
 firebase.initializeApp({
@@ -83,13 +59,13 @@ var limit = 2;
 listenForData = () => {
     let path = 'jobs/';
     console.log(">>> Firebase Conneced. Listening for jobs...");
-    firebase.database().ref(path).on('child_added', handleData);
+    firebase.database().ref(path).on('child_added', handleIncomeJobs);
 }
 
 /**
  * Main handler. Checks job queue every 5 seconds. Only allows
  * 2 jobs to run concurrently. This is an implementation of a
- * "leaky bucket" approach to prevent overloading the script. 
+ * "leaky bucket" approach to prevent overloading the script.
  */
 handleActiveJobs = () =>{
     // console.log("1-1-1-1-1-1-1-1");
@@ -132,7 +108,7 @@ handlePop = (data) => {
  * (if it is, remove the job from the stack) and initiates the task of the job
  * @param  {Snapshot} snapshot Firebase Snapshot object
  */
-handleData = (snapshot) => {
+handleIncomeJobs = (snapshot) => {
     let data = snapshot.val();
     console.log("Job:", data.job_id, "deteched by artist:", data.uid);
     if (!data.complete) {
@@ -156,8 +132,8 @@ submit = (data) => {
 
 /**
  * Mutates the job.complete field to true in the FB database
- * @param  {String}   jobID    [description]
- * @param  {Function} callback
+ * @param  {String}   jobID    [UID of job]
+ * @param  {bool} remove  [if true, delete the job]
  */
 markJobComplete = (jobID,remove) => {
     let jobPath = `jobs/${jobID}`;
@@ -209,7 +185,6 @@ submitJob = (path, uid, artworkUID, task) => {
 autoTag = (data) => {
     console.log(">Autotag");
     logInToStorage(data)
-        .then(retrieveImageFile)
         .then(callClarifai)
         .then(recordInDatabase);
 }
@@ -227,38 +202,16 @@ logInToStorage = (data) => {
     });
 }
 
-/**
- * Retrieves the URL of the requested image. If the fullsize image is requested,
- * not the thumbnail, the URL must be signed to be accessible as fullsize art
- * is private.
- * @param  {Return} input the return from logInToStorage
- */
-retrieveImageFile = (input) => {
-    let gcs  = input[0];
-    let data = input[1];
-	return new Promise( (resolve,reject)=>{
-		console.log(">Retrieveing image:",data.file_path);
-	    let expires  = new Date().getTime() + lifespan; // global var
-        let thisFile = gcs.bucket(data.bucket).file(data.file_path);
-
-	    let params   = {
-	        action : "read",
-	        expires: expires,
-	    };
-		thisFile.getSignedUrl(params, (err,url)=>{
-            console.log("Signing Error:", err);
-		    resolve([url,data]);
-		});
-	});
-}
 
 /**
  * [callClarifai description]
  * @param  {Array} input return from retrieveImageFile
  */
 callClarifai = (input) => {
-    let url  = input[0];
+    let gcs  = input[0];
     let data = input[1];
+    // public read link to 512px image
+    let url  = `https://storage.googleapis.com/art-uploads/portal/${data.uid}/thumb512/${data.name}`;
 
 	return new Promise( (resolve, reject)=>{
 	    //NOTE url is an auth'd url for {lifespan} ms
@@ -269,23 +222,21 @@ callClarifai = (input) => {
 	      'clientSecret': clientScrt
 	    });
 	    console.log(">Clarifai Connected Successfully");
-        let timer = 3000; // 3 sec
-        setTimeout( ()=>{ // let URL signing propagate
-            Clarifai.getTagsByUrl(url).then( (tagResponse)=>{
+
+        Clarifai.getTagsByUrl(url).then( (tagResponse)=>{
             console.log(">Recieved Tags");
 	        let tagResult = tagResponse.results[0].result.tag;
 	        let docid     = tagResponse.results[0].docid;
-	        Clarifai.getColorsByUrl(url)
-	        .then( (colorResponse)=>{
+	        Clarifai.getColorsByUrl(url).then( (colorResponse)=>{
                 console.log(">Recieved Colors");
 	            let colorResult = colorResponse.results[0].colors;
 	            resolve([tagResult, colorResult, docid, data]);
 	        }, (err)=>{console.log(err);});
 	    },(err)=>{
             console.log(err);
+            console.log(err.results[0].result);
             console.log("Clarifai Error with::=>", data.job_id);
-        })},
-        timer);
+        });
 	});
 }
 
@@ -386,7 +337,7 @@ getFileThenResize = (small, large, quality, data) => {
                 }).catch((err)=>{
                     console.log(err);
                 });
-            
+
 	    } else {
                 console.log("Buffer Download Error=>",buffer.length, "|", err);
             }
