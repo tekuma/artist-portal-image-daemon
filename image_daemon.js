@@ -352,7 +352,7 @@ getFileThenResize = (data) => {
                                 console.log(errx,data.job_id);
                             }
 
-                            console.log("->Resize 128 completed.", );
+                            console.log("->Resize 128 completed.", data.job_id);
                             let resize512options = {
                                 srcPath: path_full,
                                 dstPath: path512,
@@ -362,7 +362,7 @@ getFileThenResize = (data) => {
 
                             im.resize(resize512options, (erro, stdout2, stderr2)=>{
                                 if (erro) {
-                                    console.log(erro,data.job_id); 
+                                    console.log(erro,data.job_id);
                                 }
                                 console.log("->Resize 512 completed.", data.job_id);
                                 let upload_options128 = {
@@ -384,6 +384,9 @@ getFileThenResize = (data) => {
                                         predefinedAcl:"publicRead"
                                     }
                                     bucket.upload(path512,upload_options512, (err,files,res)=>{
+                                        if (err) {
+                                            console.log(err, data.job_id);
+                                        }
                                         console.log("->Thumbails complete for:",data.job_id);
                                         limit++; //ENDPOINT of resize job
                                         let dest = `portal/${data.uid}/thumb512/${data.name}`;
