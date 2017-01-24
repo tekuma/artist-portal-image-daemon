@@ -115,7 +115,9 @@ handlePop = (data) => {
 handleIncomeJobs = (snapshot) => {
     let data = snapshot.val();
     console.log("Job:", data.job_id, "deteched by artist:", data.uid);
-    if (!data.complete) {
+    if (data = "placeholder") {
+        // do nothing 
+    } else if (!data.complete) {
         console.log(data.name," >>> Added to queue");
         queue.push(data);
 
