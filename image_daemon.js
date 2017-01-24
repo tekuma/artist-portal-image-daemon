@@ -115,8 +115,8 @@ handlePop = (data) => {
 handleIncomeJobs = (snapshot) => {
     let data = snapshot.val();
     console.log("Job:", data.job_id, "deteched by artist:", data.uid);
-    if (data = "placeholder") {
-        // do nothing 
+    if (data.uid === 1) {
+        console.log("placeholder");
     } else if (!data.complete) {
         console.log(data.name," >>> Added to queue");
         queue.push(data);
@@ -317,19 +317,19 @@ getFileThenResize = (data) => {
         let fullsize_image  = bucket.file(data.file_path);
 
         let tmp_settings  = {
-            keep   : true,
+            keep   : false,
             prefix : "tekuma-",
             postfix: ".png",
             dir    :"./downloads"
         };
         let tmp_settings2 = {
-            keep   : true,
+            keep   : false,
             prefix : "tekuma2-",
             postfix: ".png",
             dir    :"./downloads"
         };
         let tmp_settings3 = {
-            keep   : true,
+            keep   : false,
             prefix : "tekuma3-",
             postfix: ".png",
             dir    :"./downloads"
