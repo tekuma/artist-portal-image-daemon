@@ -13,7 +13,7 @@ NOTE: NPM v3.8.10
 - IF restarted: go to `/tekuma/artist-server`
  - `tmux new -s server`
 
-- Run `node image_daemon.js` to start the server code
+- Run `sudo node image_daemon.js` to start the server code
 
 ## image_daemon.js
 The image daemon handles all back-end processes. Rather than using an HTTP interface with node (like express and AJAX), the artist portal creates "jobs" in the artist-tekuma database, at:

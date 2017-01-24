@@ -336,13 +336,10 @@ getFileThenResize = (data) => {
         }
 
         tmp.file(tmp_settings, function _tempFileCreated(err, path_full, fd, cleanupCallback) {
-            console.log("== temp1 made");
             fullsize_image.download({destination:path_full}, (err)=>{
                 console.log("== fullize download complete");
                 tmp.file(tmp_settings2, function _tempFileCreated(err2, path128, fd2, cleanupCallback2) {
-                    console.log("== temp2 made");
                     tmp.file(tmp_settings3, function _tempFileCreated(err3, path512, fd3, cleanupCallback3) {
-                        console.log("== temp3 made");
                         let resize128options = {
                             srcPath: path_full,
                             dstPath: path128,
