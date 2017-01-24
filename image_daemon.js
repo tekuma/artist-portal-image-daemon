@@ -317,19 +317,19 @@ getFileThenResize = (data) => {
         let fullsize_image  = bucket.file(data.file_path);
 
         let tmp_settings  = {
-            keep   : false,
+            keep   : true,
             prefix : "tekuma-",
             postfix: ".png",
             dir    :"./downloads"
         };
         let tmp_settings2 = {
-            keep   : false,
+            keep   : true,
             prefix : "tekuma2-",
             postfix: ".png",
             dir    :"./downloads"
         };
         let tmp_settings3 = {
-            keep   : false,
+            keep   : true,
             prefix : "tekuma3-",
             postfix: ".png",
             dir    :"./downloads"
