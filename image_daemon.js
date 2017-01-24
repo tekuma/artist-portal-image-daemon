@@ -24,9 +24,11 @@
 
 //Libs
 const firebase = require('firebase-admin');
-const jimp     = require('jimp');
 const gcloud   = require('google-cloud');
 const Clarifai = require('clarifai');
+const tmp        = require('tmp');
+const im         = require('imagemagick');
+
 //Keys
 const serviceKey = require('./auth/artistKey.json');
 const curatorKey = require('./auth/curatorKey.json');
@@ -34,9 +36,7 @@ const curatorKey = require('./auth/curatorKey.json');
 
 // ==== Global Variables ========
 const tagCutoff  = .85; // (0-1) Cutoff for the 'certainty' of tags returned
-const small      = 128; // width of 'small' thumbnail generated
-const large      = 512; // width of 'large' thumbnail generated
-const quality    = 90;  // jpg quality param requested by Jimp
+
 
 // DEFAULT App : artist-tekuma-4a697 connection
 firebase.initializeApp({
@@ -81,8 +81,12 @@ handleActiveJobs = () =>{
     }, 5000);
 }
 
-
+/**
+ * [handlePop description]
+ * @param  {Object} data [The job json from firebase]
+ */
 handlePop = (data) => {
+    //FIXME handle with switch statement
     console.log("Job:", data.job_id, "initiated");
     if (!data.complete) {
         if (data.task === "autotag") {
@@ -192,7 +196,6 @@ autoTag = (data) => {
 logInToStorage = (data) => {
     return new Promise( (resolve,reject)=>{
         let projId = 'artist-tekuma-4a697';
-        let key = "auth/googleServiceKey.json";
         let gcs = gcloud.storage({
             credentials: serviceKey,
             projectId  : projId
@@ -244,47 +247,47 @@ callClarifai = (input) => {
  * Records outputs from Clarifai to DB.
  */
 recordInDatabase = (results) => {
-		let tagResult   = results[0];
-		let colorResult = results[1];
-		let docid       = results[2];
-        let data        = results[3];
-		console.log(">> Connecting to firebase DB ");
-        dataPath = `public/onboarders/${data.uid}/artworks/${data.name}`;
-		console.log('=============================');
-		console.log(">>User:", data.uid, "Artwork:", data.name, "Path:",dataPath );
-		let dbRef;
-		try { // may or maynot need to re-initialize connection to FB
-		    dbRef = firebase.database().ref(dataPath); //root refrence
-		} catch (e) {
-		    initializeFirebase();
-		    dbRef = firebase.database().ref(dataPath);
-		}
-        let tagList = [];
-        // create a tag object consistent with frontend library
-        for (let i = 0; i < tagResult.probs.length; i++) {
-            //NOTE: setting arbitrary cut-offs for amount/certainty of tags.
-            // If certainty >= cutoff, take 16 tags, else only 4.
-            if ((tagResult.probs[i] >= tagCutoff && i < 16) || i < 4) {
-                let tagObj = {
-                    id   : i+1,
-                    text : tagResult.classes[i]
-                };
-                tagList.push(tagObj);
-            }
+	let tagResult   = results[0];
+	let colorResult = results[1];
+	let docid       = results[2];
+    let data        = results[3];
+	console.log(">> Connecting to firebase DB ");
+    dataPath = `public/onboarders/${data.uid}/artworks/${data.name}`;
+	console.log('=============================');
+	console.log(">>User:", data.uid, "Artwork:", data.name, "Path:",dataPath );
+	let dbRef;
+	try { // may or maynot need to re-initialize connection to FB
+	    dbRef = firebase.database().ref(dataPath); //root refrence
+	} catch (e) {
+	    initializeFirebase();
+	    dbRef = firebase.database().ref(dataPath);
+	}
+    let tagList = [];
+    // create a tag object consistent with frontend library
+    for (let i = 0; i < tagResult.probs.length; i++) {
+        //NOTE: setting arbitrary cut-offs for amount/certainty of tags.
+        // If certainty >= cutoff, take 16 tags, else only 4.
+        if ((tagResult.probs[i] >= tagCutoff && i < 16) || i < 4) {
+            let tagObj = {
+                id   : i+1,
+                text : tagResult.classes[i]
+            };
+            tagList.push(tagObj);
         }
-        let updates = {
-            colors : colorResult,
-            tags   : tagList,
-            doc_id : docid
-        }
-        console.log("> About to update Firebase");
+    }
+    let updates = {
+        colors : colorResult,
+        tags   : tagList,
+        doc_id : docid
+    }
+    console.log("> About to update Firebase");
 
-        //TODO: consider using .transaction instead of .update
-        firebase.database().ref(dataPath).update(updates,(err)=>{
-            console.log(">>Firebase Database set ; err:", err);
-            limit++; // ENDPOINT of autotag job
-            markJobComplete(data.job_id, true);
-        });
+    //TODO: consider using .transaction instead of .update
+    firebase.database().ref(dataPath).update(updates,(err)=>{
+        console.log(">>Firebase Database set ; err:", err);
+        limit++; // ENDPOINT of autotag job
+        markJobComplete(data.job_id, true);
+    });
 }
 
 
@@ -297,91 +300,101 @@ recordInDatabase = (results) => {
  * @param  {snapshot} data object passed from listener
  */
 resize = (data) => {
-    let timespan = 2500;//ms
+    let timespan = 1000;
     setTimeout(()=>{
-        getFileThenResize(small, large, quality, data);
+        getFileThenResize(data);
     }, timespan);
 }
 
 
-getFileThenResize = (small, large, quality, data) => {
+getFileThenResize = (data) => {
     logInToStorage(data).then((args)=>{
         let gcs = args[0];
         let bucket  = gcs.bucket(data.bucket);
         console.log(data.file_path);
-        let originalUpload  = bucket.file(data.file_path);
-        originalUpload.download((err,buffer)=>{
-	    if (buffer) {
-            if (buffer.length < 21000000) { // < 21 Mb
-                console.log(">Download Success |", buffer.length, "bytes |",buffer);
-                jimp.read(buffer).then((image)=>{
-                    console.log(">Begining to generate thumbnails...");
-                    let clone = image.clone();
+        let fullsize_image  = bucket.file(data.file_path);
 
-                    resizeAndUploadThumbnail(clone, small, quality, data, bucket)
-                    .then((success1)=>{
-                        if (success1) {
-                            resizeAndUploadThumbnail(image, large, quality, data, bucket)
-                            .then((success2)=>{
-                                if (success2) {
-                                    console.log(">>> Resizing finished successfully");
-                                    let dest    = `portal/${data.uid}/thumb512/${data.name}`;
-                                    limit++; //ENDPOINT of resize job
-                                    markJobComplete(data.job_id, true);
-                                    submitJob(dest, data.uid, data.name, "autotag");
+        let tmp_settings  = {
+            keep   : true,
+            prefix : "tekuma-",
+            postfix: ".png",
+            dir    :"./downloads"
+        };
+        let tmp_settings2 = {
+            keep   : true,
+            prefix : "tekuma2-",
+            postfix: ".png",
+            dir    :"./downloads"
+        };
+        let tmp_settings3 = {
+            keep   : true,
+            prefix : "tekuma3-",
+            postfix: ".png",
+            dir    :"./downloads"
+        }
+
+        tmp.file(tmp_settings, function _tempFileCreated(err, path_full, fd, cleanupCallback) {
+            fullsize_image.download({destination:path_full}, (err)=>{
+                tmp.file(tmp_settings2, function _tempFileCreated(err2, path128, fd2, cleanupCallback2) {
+                    tmp.file(tmp_settings3, function _tempFileCreated(err3, path512, fd3, cleanupCallback3) {
+                        let resize128options = {
+                            srcPath: path_full,
+                            dstPath: path128,
+                            width  : 128,
+                            format : 'png'
+                        };
+
+                        im.resize(resize128options, (err, stdout, stderr)=>{
+                            if (err) throw err;
+                            console.log("->Resize 128 completed.", data.job_id);
+                            let resize512options = {
+                                srcPath: path_full,
+                                dstPath: path512,
+                                width  : 512,
+                                format : 'png'
+                            };
+
+                            im.resize(resize512options, (err, stdout2, stderr2)=>{
+                                if (err) throw err;
+                                console.log("->Resize 512 completed.", data.job_id);
+                                let upload_options128 = {
+                                    destination:`portal/${data.uid}/thumb128/${data.name}`,
+                                    metadata:{
+                                        contentType: 'image/png'
+                                    },
+                                    // make the thumbnail publicly readable
+                                    predefinedAcl:"publicRead"
                                 }
+                                bucket.upload(path128,upload_options128, (err,file,res)=>{
+                                    console.log("->thumb128 upload complete:",data.job_id);
+                                    let upload_options512 = {
+                                        destination:`portal/${data.uid}/thumb512/${data.name}`,
+                                        metadata:{
+                                            contentType: 'image/png'
+                                        },
+                                        // make the thumbnail publicly readable
+                                        predefinedAcl:"publicRead"
+                                    }
+                                    bucket.upload(path512,upload_options512, (err,files,res)=>{
+                                        console.log("->Thumbails complete for:",data.job_id);
+                                        limit++; //ENDPOINT of resize job
+                                        let dest = `portal/${data.uid}/thumb512/${data.name}`;
+                                        submitJob(dest, data.uid, data.name, "autotag");
+                                        markJobComplete(data.job_id, true);
+
+                                        cleanupCallback();
+                                        cleanupCallback2();
+                                        cleanupCallback3();
+                                    });
+                                });
                             });
-                        }
+                        });
                     });
-
-                }).catch((err)=>{
-                    console.log(err);
                 });
-
-	    } else {
-                console.log("Buffer Download Error=>",buffer.length, "|", err);
-            }
-	    }
-        });
-    });
-}
-
-/**
- * Where resizing occurs.
- * NOTE: Thumbnails are generated as PNG
- * NOTE: Thumbnails are saved as publicly accessible
- *
- */
-resizeAndUploadThumbnail = (image, width, quality, data, bucket) => {
-    return new Promise((resolve, reject)=>{
-        console.log(">processing image:", width);
-        //NOTE: jimp.AUTO will dynamically retain the origin aspect ratio
-        image.resize(width,jimp.AUTO).quality(quality).getBuffer(jimp.MIME_PNG, (err, tbuffer)=>{
-            if(err){console.log("resize error:",err);}
-            let dest    = `portal/${data.uid}/thumb${width}/${data.name}`;
-            let thumb   = bucket.file(dest);
-            let options = {
-                metadata:{
-                    contentType: 'image/png'
-                },
-                // make the thumbnail publicly readable
-                predefinedAcl:"publicRead"
-            };
-
-            thumb.save(tbuffer, options, (err)=>{
-                if (!err) {
-                    console.log(`>>Thumbnail ${width}xAUTO success`);
-                    resolve(true);
-                } else {
-                    console.log("Error saving thumbnail",err);
-                    resolve(false);
-                }
             });
         });
     });
-
 }
-
 
 
 // ========== Overall Logic ======================

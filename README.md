@@ -43,7 +43,7 @@ Jobs on the server will be received as JSONs from the firebase DB. They should h
 The image-daemon has global read and write access to the curator-tekuma and artist-tekuma-4a697 Google Cloud/Firebase projects. This is via the service keys in the `/auth` directory. NOTE: Sensitive!!!
 
 These keys enable use of the `firebase-admin` npm library, instead of `firebase`.
-These have administrative privileged over all data. 
+These have administrative privileged over all data.
 
 ## Security
 The server, a Google Compute Engine instance called `server1`, should:
@@ -67,3 +67,9 @@ The server, a Google Compute Engine instance called `server1`, should:
 
 - List all sessions:
  - `tmux ls`
+
+## Dependencies
+- [tmp](https://github.com/raszi/node-tmp)
+- [GCloud](http://googlecloudplatform.github.io/google-cloud-node/#/docs/google-cloud/0.37.0/storage/file)
+- [imagemagick](https://www.npmjs.com/package/imagemagick)
+ - NOTE this is just the node client. The imagemagick suite must also be installed. On ubuntu, it can be install via `sudo apt-get install imagemagick`
