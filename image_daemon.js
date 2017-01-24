@@ -347,9 +347,12 @@ getFileThenResize = (data) => {
                             format : 'png'
                         };
 
-                        im.resize(resize128options, (err, stdout, stderr)=>{
-                            if (err) throw err;
-                            console.log("->Resize 128 completed.", data.job_id);
+                        im.resize(resize128options, (errx, stdout, stderr)=>{
+                            if (errx) {
+                                console.log(errx,data.job_id);
+                            }
+
+                            console.log("->Resize 128 completed.", );
                             let resize512options = {
                                 srcPath: path_full,
                                 dstPath: path512,
@@ -357,8 +360,10 @@ getFileThenResize = (data) => {
                                 format : 'png'
                             };
 
-                            im.resize(resize512options, (err, stdout2, stderr2)=>{
-                                if (err) throw err;
+                            im.resize(resize512options, (erro, stdout2, stderr2)=>{
+                                if (erro) {
+                                    console.log(erro,data.job_id); 
+                                }
                                 console.log("->Resize 512 completed.", data.job_id);
                                 let upload_options128 = {
                                     destination:`portal/${data.uid}/thumb128/${data.name}`,
