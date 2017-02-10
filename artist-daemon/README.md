@@ -9,9 +9,9 @@ NOTE: NPM v3.8.10
 ## Using Server
 - Log in via SSH to `server1` (10.142.0.2) from [Google Cloud Console](https://console.cloud.google.com/compute/instances?project=artist-tekuma-4a697)
 
-- IF returning: `tmux a -t server` to go to active process.
+- IF returning: `tmux a -t artist` to go to active process.
 - IF restarted: go to `/tekuma/artist-server`
- - `tmux new -s server`
+ - `tmux new -s artist`
 
 - Run `sudo node image_daemon.js` to start the server code
 

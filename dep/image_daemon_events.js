@@ -2,32 +2,14 @@
 // Copyright 2016 Tekuma Inc.
 // All rights reserved.
 // created by Stephen L. White
-//
-//  See README.md for more.
-
-// We use 'jobs' to list tasks to be handled server-side.
-// Below is an example _Job_ object.
-/*
--KYAOSwR5VFOM1d7oj-2: {
-    bucket   : "art-uploads", // the GC bucket fullsize image is in
-    complete : true, // if the job has been Successfully completed.
-    completed: "2016-12-04T19:53:20.947Z" // When job was marked complete.
-    file_path: "portal/vqy3UGVZQzN7GjHQeeFBKhe7wY72/uploads/-KYAOSm2qS6-EuwXOgME",
-                // the path to the image, inside of the bucket.
-    job_id   : "-KYAOSwR5VFOM1d7oj-2",  // UID for this job
-    name     : "-KYAOSm2qS6-EuwXOgME" ,  // the Artwork UID of the image
-    submitted: "2016-12-04T19:53:20.947Z", // time job was created
-    task     : "resize",  // what the job is (resize || tag)
-    uid      : "vqy3UGVZQzN7GjHQeeFBKhe7wY72" //the user's UID
-}
- */
 
 //Libs
 const firebase = require('firebase-admin');
+const im       = require('imagemagick');
 const gcloud   = require('google-cloud');
 const Clarifai = require('clarifai');
-const tmp        = require('tmp');
-const im         = require('imagemagick');
+const events   = require('events');
+const tmp      = require('tmp');
 
 //Keys
 const serviceKey = require('./auth/artistKey.json');
@@ -44,13 +26,37 @@ firebase.initializeApp({
     credential  : firebase.credential.cert(serviceKey)
 });
 // SECONDARY App : curator-tekuma connection
-var curator  = firebase.initializeApp({
+const curator  = firebase.initializeApp({
     databaseURL : "https://curator-tekuma.firebaseio.com/",
     credential  : firebase.credential.cert(curatorKey)
 }, "curator");
 
-var queue = [];
-var limit = 2;
+// Memory:
+const queue = [];
+let limit = 2;
+
+class semaphor {
+    constructor(limit) {
+        this.limit = limit;
+        this.queue = [];
+    }
+
+    decrement() {
+
+    }
+
+    increment() {
+
+    }
+
+    pop() {
+        return this.queue.pop();
+    }
+
+    push(x) {
+        this.queue.push(x);
+    }
+}
 
 /**
  * Establishes a listen on the /jobs branch of the DB. Any children added

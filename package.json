@@ -1,10 +1,11 @@
 {
-  "name": "image-daemon",
+  "name": "tekuma-daemons",
   "version": "1.0.0",
   "description": "",
   "main": "image_daemon.js",
   "scripts": {
-    "start": "node image_daemon.js",
+    "start-art": "node artist-daemon/image_daemon.js",
+    "start-curator": "node curator-daemon/curator_daemon.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Stephen White",
