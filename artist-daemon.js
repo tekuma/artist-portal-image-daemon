@@ -35,7 +35,7 @@ const curatorKey = require('../auth/curatorKey.json');
 
 
 // ==== Global Variables ========
-const tagCutoff  = .85; // (0-1) Cutoff for the 'certainty' of tags returned
+const tagCutoff  = .80; // (0-1) Cutoff for the 'certainty' of tags returned
 
 
 // DEFAULT App : artist-tekuma-4a697 connection
@@ -51,6 +51,7 @@ var curator  = firebase.initializeApp({
 
 var queue = []; // where jobs are stored
 var limit = 2;  // number of allowed concurrent jobs to run.
+const delay = 5000;//number of ms between checking the jobs queue
 
 /**
  * Establishes a listen on the /jobs branch of the DB. Any children added
@@ -69,16 +70,13 @@ listenForData = () => {
  * NOTE could also implement a semaphor, or an eventemitted based approach.
  */
 handleActiveJobs = () =>{
-    // console.log("1-1-1-1-1-1-1-1");
-    // console.log(queue.length);
-    // console.log("Limit",limit);
     while (limit > 0 && queue.length > 0) {
         limit--;
         let job = queue.pop();
         handlePop(job);
         setTimeout( ()=>{
             handleActiveJobs();
-        }, 5000);
+        }, delay);
     }
 
 }
