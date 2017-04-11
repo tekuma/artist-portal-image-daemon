@@ -31,8 +31,8 @@ const tmp      = require('tmp');
 const im       = require('imagemagick');
 
 //Keys
-const serviceKey = require('../auth/artistKey.json');
-const curatorKey = require('../auth/curatorKey.json');
+const serviceKey = require('./auth/artistKey.json');
+const curatorKey = require('./auth/curatorKey.json');
 
 
 // ==== Global Variables ========
