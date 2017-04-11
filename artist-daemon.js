@@ -4,7 +4,8 @@
 // created by Stephen L. White
 //
 //  See README.md for more.
-
+// NOTE: do not run this script directly for production.
+//       Instead, use the auto_restart script.
 // We use 'jobs' to list tasks to be handled server-side.
 // Below is an example _Job_ object.
 /*
@@ -54,13 +55,34 @@ var limit = 2;  // number of allowed concurrent jobs to run.
 const delay = 5000;//number of ms between checking the jobs queue
 
 /**
- * Establishes a listen on the /jobs branch of the DB. Any children added
- * to the node will trigger the handleData callback.
+ * Establishes a listen on the /jobs branch of the artist DB. Any children added
+ * to the node will trigger the handleIncomeJobs callback.
  */
 listenForData = () => {
     let path = 'jobs/';
     console.log(">>> Firebase Conneced. Listening for jobs...");
     firebase.database().ref(path).on('child_added', handleIncomeJobs);
+}
+
+/**
+* Extracts the job it as passed, checks if it is already complete
+* (if it is, remove the job from the stack) and initiates the task of the job
+* @param  {Snapshot} snapshot Firebase Snapshot object
+*/
+handleIncomeJobs = (snapshot) => {
+    let data = snapshot.val();
+    console.log("Job:", data.job_id, "deteched by artist:", data.uid);
+
+    if (data.uid === 1) {
+        console.log("placeholder");
+    } else if (!data.complete) {
+        console.log(data.name," >>> Added to queue");
+        queue.push(data);
+
+    } else {
+        console.log(data.job_id, "<complete>");
+        removeJob(data.job_id);
+    }
 }
 
 /**
@@ -74,10 +96,12 @@ handleActiveJobs = () =>{
         limit--;
         let job = queue.pop();
         handlePop(job);
-        setTimeout( ()=>{
-            handleActiveJobs();
-        }, delay);
     }
+
+    // wait and do nothing
+    setTimeout( ()=>{
+        handleActiveJobs();
+    }, delay);
 
 }
 
@@ -106,25 +130,6 @@ handlePop = (data) => {
   }
 }
 
-/**
- * Extracts the job it as passed, checks if it is already complete
- * (if it is, remove the job from the stack) and initiates the task of the job
- * @param  {Snapshot} snapshot Firebase Snapshot object
- */
-handleIncomeJobs = (snapshot) => {
-    let data = snapshot.val();
-    console.log("Job:", data.job_id, "deteched by artist:", data.uid);
-    if (data.uid === 1) {
-        console.log("placeholder");
-    } else if (!data.complete) {
-        console.log(data.name," >>> Added to queue");
-        queue.push(data);
-
-    } else {
-      console.log(data.job_id, "<complete>");
-      removeJob(data.job_id);
-  }
-}
 
 submit = (data) => {
     curator.database().ref(`submissions/${data.artwork_uid}`).set(data.submission).then(()=>{
@@ -308,6 +313,10 @@ resize = (data) => {
 }
 
 
+/**
+ * Yes, this is digustingly nested.
+ * @param  {[type]} data [description]
+ */
 getFileThenResize = (data) => {
     logInToStorage(data).then((args)=>{
         let gcs = args[0];

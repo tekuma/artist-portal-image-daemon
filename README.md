@@ -1,7 +1,7 @@
 
 # Artist-tekuma Server
 ##### Back-end code for [artist.tekuma.io](https://artist.tekuma.io/)
-##### Handles image resizing, jobs, etc
+##### Handles image resizing, jobs, etc     
 
 NOTE: Use Node.js LTS version v(6.9.1)
 NOTE: NPM v3.8.10
