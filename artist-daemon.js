@@ -21,6 +21,17 @@
     task     : "resize",  // what the job is (resize || tag)
     uid      : "vqy3UGVZQzN7GjHQeeFBKhe7wY72" //the user's UID
 }
+
+let job = {
+    artist_uid  : firebase.auth().currentUser.uid,
+    file_path   : path,
+    task        : "resize",
+    job_id      : jobID,
+    isComplete  : false,
+    bucket      : "art-uploads",
+    artwork_uid : artworkUID,
+    submitted   : new Date().getTime()
+}
  */
 
 //Libs
@@ -71,12 +82,12 @@ listenForData = () => {
 */
 handleIncomeJobs = (snapshot) => {
     let data = snapshot.val();
-    console.log("Job:", data.job_id, "deteched by artist:", data.uid);
+    console.log("Job:", data.job_id, "deteched by artist:", data.artist_uid);
 
-    if (data.uid === 1) {
+    if (data.job_id === 1) {
         console.log("placeholder");
-    } else if (!data.complete) {
-        console.log(data.name," >>> Added to queue");
+    } else if (!data.isComplete) {
+        console.log(data.artwork_uid," >>> Added to queue");
         queue.push(data);
 
     } else {
@@ -111,15 +122,15 @@ handleActiveJobs = () =>{
  */
 handlePop = (data) => {
     console.log("Job:", data.job_id, "initiated");
-    if (!data.complete) {
+    if (!data.isComplete) {
         if (data.task === "autotag") {
-            console.log(data.name," >>> Job Initiated in autotag!");
+            console.log(data.artwork_uid," >>> Job Initiated in autotag!");
             autoTag(data);
         } else if (data.task === "resize"){
-            console.log(data.name," >>> Job Initiated in resize!");
+            console.log(data.artwork_uid," >>> Job Initiated in resize!");
             resize(data);
       } else if (data.task === "submit") {
-            console.log(data.name, ">> Job initiated in submit");
+            console.log(data.artwork_uid, ">> Job initiated in submit");
             submit(data);
       } else {
             console.log(" :( unrecognized task ",data.task);
@@ -131,17 +142,25 @@ handlePop = (data) => {
 }
 
 
+/**
+ * First, upload the data to the 'submissions' branch. Then, check if the uid
+ * is present in the held branch and delete it if it is.
+ * @param  {[type]} data [description]
+ * @return {[type]}      [description]
+ */
 submit = (data) => {
     curator.database().ref(`submissions/${data.artwork_uid}`).set(data.submission).then(()=>{
         console.log(">> Submission added to list.");
-        limit++; // End point of submit job
-        markJobComplete(data.job_id,true);
+        curator.databae().ref(`held/${data.artwork_uid}`).remove().then(()=>{
+            markJobComplete(data.job_id,true);
+            limit++; // End point of submit job
+        });
     });
 
 }
 
 /**
- * Mutates the job.complete field to true in the FB database
+ * Mutates the job.isComplete field to true in the FB database
  * @param  {String}   jobID    [UID of job]
  * @param  {bool} remove  [if true, delete the job]
  */
@@ -169,22 +188,21 @@ removeJob = (jobID) => {
 /**
  * Creates a new Job in the DB
  */
-submitJob = (path, uid, artworkUID, task) => {
+submitJob = (path, artist_uid, artworkUID, task) => {
     let url      = firebase.database().ref('jobs').push();
-    let jobID    = url.path.o[1];
+    let jobID    = url.path.o[1]; //part of metadata that stores key
     let job = {
-        task     : task,  //
-        uid      : uid,   //
-        file_path: path,  //
-        job_id   : jobID,
-        complete : false,
-        bucket   : "art-uploads",
-        name     : artworkUID, //
-        submitted: new Date().toISOString(),
+        task        : task,
+        artist_uid  : artist_uid,
+        file_path   : path,
+        job_id      : jobID,
+        complete    : false,
+        bucket      : "art-uploads",
+        artwork_uid : artworkUID,
+        submitted   : new Date().getTime(),
     }
     let jobPath = `jobs/${jobID}`;
     let jobRef  = firebase.database().ref(jobPath);
-    console.log(jobRef.toString());
     jobRef.set(job, ()=>{
         console.log(">>Job",jobID,"<submitted>");
     });
@@ -220,7 +238,7 @@ callClarifai = (input) => {
     let gcs  = input[0];
     let data = input[1];
     // public read link to 512px image
-    let url  = `https://storage.googleapis.com/art-uploads/portal/${data.uid}/thumb512/${data.name}`;
+    let url  = `https://storage.googleapis.com/art-uploads/portal/${data.artist_uid}/thumb512/${data.artwork_uid}`;
 
 	return new Promise( (resolve, reject)=>{
 	    //NOTE url is an auth'd url for {lifespan} ms
@@ -258,9 +276,9 @@ recordInDatabase = (results) => {
 	let docid       = results[2];
     let data        = results[3];
 	console.log(">> Connecting to firebase DB ");
-    dataPath = `public/onboarders/${data.uid}/artworks/${data.name}`;
+    dataPath = `public/onboarders/${data.artist_uid}/artworks/${data.artwork_uid}`;
 	console.log('=============================');
-	console.log(">>User:", data.uid, "Artwork:", data.name, "Path:",dataPath );
+	console.log(">>User:", data.artist_uid, "Artwork:", data.artwork_uid, "Path:",dataPath );
 	let dbRef;
 	try { // may or maynot need to re-initialize connection to FB
 	    dbRef = firebase.database().ref(dataPath); //root refrence
@@ -374,7 +392,7 @@ getFileThenResize = (data) => {
                                 }
                                 console.log("->Resize 512 completed.", data.job_id);
                                 let upload_options128 = {
-                                    destination:`portal/${data.uid}/thumb128/${data.name}`,
+                                    destination:`portal/${data.artist_uid}/thumb128/${data.artwork_uid}`,
                                     metadata:{
                                         contentType: 'image/png'
                                     },
@@ -384,7 +402,7 @@ getFileThenResize = (data) => {
                                 bucket.upload(path128,upload_options128, (err,file,res)=>{
                                     console.log("->thumb128 upload complete:",data.job_id);
                                     let upload_options512 = {
-                                        destination:`portal/${data.uid}/thumb512/${data.name}`,
+                                        destination:`portal/${data.artist_uid}/thumb512/${data.artwork_uid}`,
                                         metadata:{
                                             contentType: 'image/png'
                                         },
@@ -397,8 +415,8 @@ getFileThenResize = (data) => {
                                         }
                                         console.log("->Thumbails complete for:",data.job_id);
                                         limit++; //ENDPOINT of resize job
-                                        let dest = `portal/${data.uid}/thumb512/${data.name}`;
-                                        submitJob(dest, data.uid, data.name, "autotag");
+                                        let dest = `portal/${data.artist_uid}/thumb512/${data.artwork_uid}`;
+                                        submitJob(dest, data.artist_uid, data.artwork_uid, "autotag");
                                         markJobComplete(data.job_id, true);
 
                                         cleanupCallback();
