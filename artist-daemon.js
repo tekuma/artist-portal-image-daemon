@@ -134,14 +134,16 @@ handlePop = (data) => {
 
 /**
  * [reset description]
- * @param {[type]} data [description]
+ * @param {JSON} data [description]
  */
 reset = (data) => {
     let branch = data.status.toLowerCase();
+    if (branch === "pending") branch = "submissions";
     let path = `${branch}/${data.artwork_uid}`;
-    curator.database().ref(path).transaction((node)=>{
-        node.new_message = false;
-        return node;
+    console.log(path);
+    curator.database().ref(path).update({new_message:false}).then(()=>{
+        markJobComplete(data.job_id,true);
+        limit++; // End point of submit job
     });
 }
 
