@@ -1,5 +1,5 @@
 
-# Artist-tekuma Server
+# Artist Daemon
 ##### Back-end code for [artist.tekuma.io](https://artist.tekuma.io/)
 ##### Handles image resizing, jobs, etc     
 
@@ -7,7 +7,7 @@ NOTE: Use Node.js LTS version v(6.9.1)
 NOTE: NPM v3.8.10
 
 ## Using Server
-- Log in via SSH to `server1` (10.142.0.2) from [Google Cloud Console](https://console.cloud.google.com/compute/instances?project=artist-tekuma-4a697)
+- Log in via SSH to `server1` (10.142.0.2) from [Google Cloud Console](https://console.cloud.google.com/compute/instances?project=artist-tekuma-4a697) **Using the unix username 'stephen'**
 
 - IF returning: `tmux a -t artist` to go to active process.
 - IF restarted: go to `/tekuma/artist-server`

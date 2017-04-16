@@ -9,27 +9,14 @@
 // We use 'jobs' to list tasks to be handled server-side.
 // Below is an example _Job_ object.
 /*
--KYAOSwR5VFOM1d7oj-2: {
-    bucket   : "art-uploads", // the GC bucket fullsize image is in
-    complete : true, // if the job has been Successfully completed.
-    completed: "2016-12-04T19:53:20.947Z" // When job was marked complete.
-    file_path: "portal/vqy3UGVZQzN7GjHQeeFBKhe7wY72/uploads/-KYAOSm2qS6-EuwXOgME",
-                // the path to the image, inside of the bucket.
-    job_id   : "-KYAOSwR5VFOM1d7oj-2",  // UID for this job
-    name     : "-KYAOSm2qS6-EuwXOgME" ,  // the Artwork UID of the image
-    submitted: "2016-12-04T19:53:20.947Z", // time job was created
-    task     : "resize",  // what the job is (resize || tag)
-    uid      : "vqy3UGVZQzN7GjHQeeFBKhe7wY72" //the user's UID
-}
-
 let job = {
+    artwork_uid : artworkUID,
     artist_uid  : firebase.auth().currentUser.uid,
+    is_complete : false,
     file_path   : path,
     task        : "resize",
     job_id      : jobID,
-    isComplete  : false,
     bucket      : "art-uploads",
-    artwork_uid : artworkUID,
     submitted   : new Date().getTime()
 }
  */
@@ -86,7 +73,7 @@ handleIncomeJobs = (snapshot) => {
 
     if (data.job_id === 1) {
         console.log("placeholder");
-    } else if (!data.isComplete) {
+    } else if (!data.is_complete) {
         console.log(data.artwork_uid," >>> Added to queue");
         queue.push(data);
 
@@ -122,7 +109,7 @@ handleActiveJobs = () =>{
  */
 handlePop = (data) => {
     console.log("Job:", data.job_id, "initiated");
-    if (!data.isComplete) {
+    if (!data.is_complete) {
         if (data.task === "autotag") {
             console.log(data.artwork_uid," >>> Job Initiated in autotag!");
             autoTag(data);
@@ -132,13 +119,30 @@ handlePop = (data) => {
       } else if (data.task === "submit") {
             console.log(data.artwork_uid, ">> Job initiated in submit");
             submit(data);
+      } else if (data.task === "reset_new_message") {
+            console.log(data.artwork_uid, ">> Job initiated in reset")
+            reset(data);
       } else {
             console.log(" :( unrecognized task ",data.task);
       }
   } else {
-      console.log(data.job_id, "<complete>");
-      removeJob(data.job_id);
+        console.log(data.job_id, "<complete>");
+        removeJob(data.job_id);
   }
+}
+
+
+/**
+ * [reset description]
+ * @param {[type]} data [description]
+ */
+reset = (data) => {
+    let branch = data.status.toLowerCase();
+    let path = `${branch}/${data.artwork_uid}`;
+    curator.database().ref(path).transaction((node)=>{
+        node.new_message = false;
+        return node;
+    });
 }
 
 
@@ -151,7 +155,7 @@ handlePop = (data) => {
 submit = (data) => {
     curator.database().ref(`submissions/${data.artwork_uid}`).set(data.submission).then(()=>{
         console.log(">> Submission added to list.");
-        curator.databae().ref(`held/${data.artwork_uid}`).remove().then(()=>{
+        curator.database().ref(`held/${data.artwork_uid}`).remove().then(()=>{
             markJobComplete(data.job_id,true);
             limit++; // End point of submit job
         });
@@ -160,14 +164,14 @@ submit = (data) => {
 }
 
 /**
- * Mutates the job.isComplete field to true in the FB database
+ * Mutates the job.is_complete field to true in the FB database
  * @param  {String}   jobID    [UID of job]
  * @param  {bool} remove  [if true, delete the job]
  */
 markJobComplete = (jobID,remove) => {
     let jobPath = `jobs/${jobID}`;
     let jobRef  = firebase.database().ref(jobPath);
-    jobRef.update({complete:true}).then( ()=>{
+    jobRef.update({is_complete:true}).then( ()=>{
         console.log("!>>Job:",jobID,"is marked complete");
         if (remove) {
             removeJob(jobID);
@@ -192,14 +196,14 @@ submitJob = (path, artist_uid, artworkUID, task) => {
     let url      = firebase.database().ref('jobs').push();
     let jobID    = url.path.o[1]; //part of metadata that stores key
     let job = {
-        task        : task,
-        artist_uid  : artist_uid,
-        file_path   : path,
-        job_id      : jobID,
-        complete    : false,
-        bucket      : "art-uploads",
         artwork_uid : artworkUID,
+        artist_uid  : artist_uid,
+        is_complete : false,
+        file_path   : path,
         submitted   : new Date().getTime(),
+        job_id      : jobID,
+        bucket      : "art-uploads",
+        task        : task,
     }
     let jobPath = `jobs/${jobID}`;
     let jobRef  = firebase.database().ref(jobPath);
