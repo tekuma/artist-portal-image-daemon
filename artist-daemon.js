@@ -157,7 +157,9 @@ reset = (data) => {
 submit = (data) => {
     curator.database().ref(`submissions/${data.artwork_uid}`).set(data.submission).then(()=>{
         console.log(">> Submission added to list.");
-        curator.database().ref(`held/${data.artwork_uid}`).remove().then(()=>{
+        curator.database().ref(`held/${data.artwork_uid}`).transaction((data)=>{
+            return null
+        }).then(()=>{
             markJobComplete(data.job_id,true);
             limit++; // End point of submit job
         });
